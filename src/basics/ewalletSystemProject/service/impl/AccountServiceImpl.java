@@ -4,20 +4,29 @@
     import main.ewalletSystem.ewalletSystemProject.exception.InsufficientBalanceException;
     import main.ewalletSystem.ewalletSystemProject.exception.InvalidAmountException;
     import main.ewalletSystem.ewalletSystemProject.exception.InvalidPasswordException;
+    import main.ewalletSystem.ewalletSystemProject.helper.AccountResult;
     import main.ewalletSystem.ewalletSystemProject.model.Account;
     import main.ewalletSystem.ewalletSystemProject.model.EWalletSystem;
+    import main.ewalletSystem.ewalletSystemProject.model.History;
     import main.ewalletSystem.ewalletSystemProject.service.AccountService;
     import main.ewalletSystem.ewalletSystemProject.service.AccountValidationService;
+    import main.ewalletSystem.ewalletSystemProject.service.HistoryService;
 
     import java.util.Optional;
     import java.util.Scanner;
 
     public class AccountServiceImpl implements AccountService {
-
-        private EWalletSystem eWalletSystem = new EWalletSystem();
+        private EWalletSystem eWalletSystem;
+        private HistoryService historyService;
         private AccountValidationService accountValidationService = new AccountValidationServiceImpl();
 
-        public EWalletSystem geteWalletSystem(){
+        public AccountServiceImpl(EWalletSystem eWalletSystem,
+                                  HistoryService historyService) {
+            this.eWalletSystem = eWalletSystem;
+            this.historyService = historyService;
+        }
+
+        public EWalletSystem geteWalletSystem() {
             return eWalletSystem;
         }
 
@@ -31,9 +40,11 @@
             Optional<Account> optionalAccountByUserName = getOptionalAccountByUserName(account);
             Optional<Account> optioanlAccountByPhoneNumber = getOptionalAccountByPhoneNumber(account);
             if (optionalAccountByUserName.isPresent() || optioanlAccountByPhoneNumber.isPresent()) {
+                historyService.addHistory(account.getUserName(), new History("signup", false));
                 return false;
             }
             eWalletSystem.getAccounts().add(account);
+            historyService.addHistory(account.getUserName(), new History("signup", true));
             return true;
         }
 
@@ -44,9 +55,17 @@
          */
         @Override
         public boolean getAccountByUserNameAndPassword(Account account) {
-            return eWalletSystem.getAccounts().stream()
+            boolean isLogin = eWalletSystem.getAccounts().stream()
                     .anyMatch(acc -> acc.getUserName().equals(account.getUserName()) &&
                                      acc.getPassword().equals(account.getPassword()));
+            if (isLogin){
+                historyService.addHistory(account.getUserName(), new History("login", true));
+
+            }else{
+                historyService.addHistory(account.getUserName(), new History("login", false));
+
+            }
+            return isLogin;
         }
 
         @Override
@@ -67,36 +86,43 @@
          * @return
          */
         @Override
-        public Account deposit(Account account, double amount) {
+        public AccountResult deposit(Account account, double amount) {
 
             Optional<Account> optionalAccount = getOptionalAccountByUserName(account);
             if (optionalAccount.isEmpty()) {
-                throw new AccountNotFoundException("Account not found ");
+                return new AccountResult(1);
+//                throw new AccountNotFoundException("Account not found ");
             }
             if (amount < 100) {
-                throw new InvalidAmountException("Amount must be >=100");
+                historyService.addHistory(account.getUserName(), new History("deposit", false));
+                  return new AccountResult(2);
+//                throw new InvalidAmountException("Amount must be >=100");
             }
             Account accountToDeposit = optionalAccount.get();
             accountToDeposit.setBalance(accountToDeposit.getBalance() + amount);
-            return accountToDeposit;
+            historyService.addHistory(account.getUserName(), new History("deposit", true));
+            return new AccountResult(4, accountToDeposit.getBalance());
         }
 
         @Override
-        public Account withdraw(Account account, double amount) {
+        public AccountResult withdraw(Account account, double amount) {
             Optional<Account> optionalAccount = getOptionalAccountByUserName(account);
             if (optionalAccount.isEmpty()) {
-                throw new AccountNotFoundException("Account not found ");
+                historyService.addHistory(account.getUserName(), new History("Withdraw", false));
+                return new AccountResult(1);
             }
             // validate amount >= 100
             if (amount < 100) {
-                throw new InvalidAmountException("Amount must be >=100");
+                historyService.addHistory(account.getUserName(), new History("Withdraw", false));
+                return new AccountResult(2);
             }
             Account accountWithDraw = optionalAccount.get();
             if (accountWithDraw.getBalance() < amount) {
-                throw new InsufficientBalanceException("Insufficient balance");
+                historyService.addHistory(account.getUserName(), new History("Withdraw", false));
+                return new AccountResult(3);
             }
             accountWithDraw.setBalance(accountWithDraw.getBalance() - amount);
-            return accountWithDraw;
+            return new AccountResult(4,accountWithDraw.getBalance());
         }
 
         @Override
@@ -111,18 +137,22 @@
                 throw new AccountNotFoundException("Account not found ");
             }
             if (amount < 100){
+                historyService.addHistory(accountFrom.getUserName(), new History("transfer", false));
                 throw new InvalidAmountException("Amount must be >=100");
             }
             Account accountFromTransfer = optionalAccountFrom.get();
             Account accountToTransfer = optionalAccountTo.get();
             if (accountFromTransfer.getBalance() < amount){
+                historyService.addHistory(accountFrom.getUserName(), new History("transfer", false));
                 throw new InsufficientBalanceException("Insufficient balance");
             }
             if (accountFromTransfer.getUserName().equals(accountToTransfer.getUserName())){
+                historyService.addHistory(accountFrom.getUserName(), new History("transfer", false));
                 throw new RuntimeException("Cannot transfer to same account");
             }
             accountFromTransfer.setBalance(accountFromTransfer.getBalance()-amount);
             accountToTransfer.setBalance(accountToTransfer.getBalance() + amount);
+            historyService.addHistory(accountFrom.getUserName(), new History("transfer", true));
             return accountToTransfer;
         }
 
@@ -142,6 +172,7 @@
                 throw new InvalidPasswordException("New password cannot be the same as old password");
             }
             account.setPassword(newPassword);
+            historyService.addHistory(account.getUserName(), new History("change Password", true));
             System.out.println("Password changed successfully");
         }
 

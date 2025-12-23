@@ -1,18 +1,31 @@
 package main.ewalletSystem.ewalletSystemProject.service.impl;
 
+import main.ewalletSystem.ewalletSystemProject.exception.AccountNotFoundException;
+import main.ewalletSystem.ewalletSystemProject.exception.InsufficientBalanceException;
+import main.ewalletSystem.ewalletSystemProject.exception.InvalidAmountException;
+import main.ewalletSystem.ewalletSystemProject.helper.AccountResult;
+import main.ewalletSystem.ewalletSystemProject.helper.AdminCredentials;
 import main.ewalletSystem.ewalletSystemProject.model.Account;
-import main.ewalletSystem.ewalletSystemProject.service.AccountService;
-import main.ewalletSystem.ewalletSystemProject.service.AccountValidationService;
-import main.ewalletSystem.ewalletSystemProject.service.ApplicationService;
+import main.ewalletSystem.ewalletSystemProject.model.EWalletSystem;
+import main.ewalletSystem.ewalletSystemProject.service.*;
 
 import java.util.Objects;
 import java.util.Scanner;
 
 public class EWalletServiceImpl implements ApplicationService {
+    // ONE shared system
+    private final EWalletSystem eWalletSystem = new EWalletSystem();
+    private final HistoryService historyService =
+            new HistoryServiceImpl(eWalletSystem);
 
-    private AccountService accountService = new AccountServiceImpl();
+    private final AccountService accountService =
+            new AccountServiceImpl(eWalletSystem, historyService);
 
-    private AccountValidationService accountValidationService = new AccountValidationServiceImpl();
+    private final AdminService adminService = new AdminServiceImpl(eWalletSystem);
+
+    private AccountValidationService accountValidationService =
+            new AccountValidationServiceImpl();
+
     @Override
     public void startApp() {
         System.out.println("welcome sir :)");
@@ -52,7 +65,13 @@ public class EWalletServiceImpl implements ApplicationService {
     }
 
     private void login(){
+
         Account account = getAccount(true);
+
+        if (account.getUserName().equals(AdminCredentials.ADMIN_USERNAME) && account.getPassword().equals(AdminCredentials.ADMIN_PASSWORD)){
+            System.out.println("admin login successfully");
+                adminPanel();
+        }
 
         if (Objects.isNull(account)) {
             return;
@@ -63,6 +82,46 @@ public class EWalletServiceImpl implements ApplicationService {
             profile(account);
         } else {
             System.out.println("invalid username or password :(");
+        }
+
+    }
+
+    private void adminPanel() {
+        boolean exit = false;
+        Scanner scanner = new Scanner(System.in);
+
+        while (!exit){
+            System.out.println(">---------------Admin Services-----------------<");
+            System.out.println("1.view all accounts         2.view all histories        3.delete account       4.exit");
+            int choice = scanner.nextInt();
+            switch (choice){
+                case 1:
+                    adminService.viewAllAccounts();
+                    break;
+
+                case 2:
+                    adminService.viewAllHistories();
+                    break;
+
+                case 3:
+                    System.out.print("Enter username to delete: ");
+                    String userName = scanner.next();
+                    boolean deleted = adminService.deleteAccount(userName);
+                    if (deleted) {
+                        System.out.println("Account deleted successfully");
+                    } else {
+                        System.out.println("Account not found");
+                    }
+                    break;
+
+                case 4:
+                    exit = true;
+                    break;
+
+                default:
+                    System.out.println("Invalid option");
+        }
+
         }
 
     }
@@ -130,7 +189,7 @@ public class EWalletServiceImpl implements ApplicationService {
         int counter = 0;
         while (true) {
             System.out.println("----------> services <------------");
-            System.out.println("1.deposit     2.withdraw   3.show account details    4.transfer      5.change password       6.logout");
+            System.out.println("1.deposit     2.withdraw   3.show account details    4.transfer      5.change password       6.logout   7.getHistory");
             Scanner scanner = new Scanner(System.in);
             System.out.println("pls give me service you need to apply.");
             int result = scanner.nextInt();
@@ -155,6 +214,9 @@ public class EWalletServiceImpl implements ApplicationService {
                     System.out.println("have a nice day :)");
                     logout = true;
                     break;
+                case 7:
+                    history(account);
+                    break;
                 default:
                     System.out.println("invalid service");
                     counter++;
@@ -168,6 +230,13 @@ public class EWalletServiceImpl implements ApplicationService {
                 break;
             }
         }
+
+    }
+
+    private void history(Account account) {
+
+        System.out.println("history: ");
+        historyService.getHistory(account.getUserName()).forEach(System.out::println);
     }
 
     public void changePassword(Account account){
@@ -213,14 +282,33 @@ public class EWalletServiceImpl implements ApplicationService {
         System.out.println(account);
     }
 
+//    private void withdraw(Account account) {
+//        System.out.println("pls enter amount you need to withdraw");
+//        try {
+//            Scanner scanner = new Scanner(System.in);
+//            double amount = scanner.nextDouble();
+//            accountService.withdraw(account, amount);
+//        }catch (RuntimeException e) {
+//            System.out.println("exception message: " + e.getMessage());
+//        }
+//    }
+
     private void withdraw(Account account) {
-        System.out.println("pls enter amount you need to withdraw");
-        try {
-            Scanner scanner = new Scanner(System.in);
-            double amount = scanner.nextDouble();
-            accountService.withdraw(account, amount);
-        }catch (RuntimeException e) {
-            System.out.println("exception message: " + e.getMessage());
+        System.out.println("pls enter amount you need to deposit");
+        Scanner scanner = new Scanner(System.in);
+        double amount = scanner.nextDouble();
+
+        AccountResult withdrawSuccess = accountService.withdraw(account, amount);
+
+        Integer error = withdrawSuccess.getError();
+        if (error == 4) {
+            System.out.println("withdraw Success your balance : " + withdrawSuccess.getAmount());
+        } else if (error == 3){
+                throw new InsufficientBalanceException("Insufficient balance");
+        } else if (error == 2) {
+            throw new InvalidAmountException("Amount must be >=100");
+        } else if (error == 1) {
+            throw new AccountNotFoundException("Account not found");
         }
     }
 
@@ -229,7 +317,17 @@ public class EWalletServiceImpl implements ApplicationService {
         try {
             Scanner scanner = new Scanner(System.in);
             double amount = scanner.nextDouble();
-             accountService.deposit(account, amount);
+             AccountResult depositSuccess = accountService.deposit(account, amount);
+             int error = depositSuccess.getError();
+            if (error == 4) {
+                System.out.println("deposit Success your balance : " + depositSuccess.getAmount());
+            } else if (error == 3){
+                throw new InsufficientBalanceException("Insufficient balance");
+            } else if (error == 2) {
+                throw new InvalidAmountException("Amount must be >=100");
+            } else if (error == 1) {
+                throw new AccountNotFoundException("Account not found");
+            }
         }catch (RuntimeException e) {
             System.out.println("exception message: " + e.getMessage());
         }
