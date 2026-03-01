@@ -1,0 +1,37 @@
+SELECT first_name, last_name, department_id, salary 
+FROM employees
+WHERE department_id IN (SELECT department_id 
+                        FROM departments
+                        WHERE location_id IN (SELECT location_id 
+                                              FROM locations
+                                              WHERE country_id =  (SELECT country_id
+                                                                   FROM countries
+                                                                   WHERE country_name = 'United Kingdom')));
+
+Answer 
+This query will return a data 
+This query finds all employees who work in departments located in the United Kingdom.
+along with their:
+
+First name
+
+Last name
+
+Department ID
+
+Salary
+
+
+Will It Return Data?
+
+It will return data only if ALL of these are true:
+
+There is a country named United Kingdom in the countries table.
+
+There are locations in the UK.
+
+There are departments assigned to those UK locations.
+
+There are employees working in those departments.
+
+If any one of these is missing → the query returns no rows.
